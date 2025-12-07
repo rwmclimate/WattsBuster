@@ -1,0 +1,61 @@
+BUILD_DATE_TIME:=$(shell echo '\"'`date +'%F__%R'`'\"') 
+BUILD_GIT_BRANCH:=$(shell echo '\"'$(shell git branch --show-current)'\"') 
+BUILD_GIT_HASH:=$(shell echo '\"'$(shell git rev-parse $(shell git log -1 --format="%H"))'\"' )
+BUILD_GIT_REV_NUM:=$(shell git rev-list --count $(shell git log -1 --format="%H") )
+BUILD_GIT_FULL_REV_STRING:=$(shell echo '\"'${BUILD_GIT_BRANCH} ${BUILD_GIT_REV_NUM}:${BUILD_GIT_HASH}'\"')
+
+## Look for uncommitted changes in source locations that may be incorporated into executables. 
+## Add a warning if uncommitted changes are detected.
+##GIT_MODS:=$(shell git status -uno . ../../common/ ../../camlink_comms | grep 'modified:' | wc | sed 's/ //g' ) 
+GIT_MODS:=$(shell git status -uno $(git rev-parse --show-toplevel) | grep 'modified:' | wc | sed 's/ //g' ) 
+
+### Bash 5.0.18 (linux mint) doesn't like this
+##GIT_WARNING:=$(shell if [[ ${GIT_MODS} -ne 0 ]]; then echo '\"\('WARNING: Possible uncommitted changes'\) \"'; fi)
+GIT_WARNING:=$(shell if test ${GIT_MODS} -ne 0 ; then echo '\"\('WARNING: Possible uncommitted changes'\) \"'; fi)
+
+## If uncommitted changes are detected, prepend a warning to ${BUILD_GIT_FULL_REV_STRING}
+BUILD_GIT_FULL_REV_STRING:=$(shell echo '\"'${GIT_WARNING}${BUILD_GIT_FULL_REV_STRING}'\"')
+
+CFLAGS=-g -O2 -Wall
+LDFLAGS=-g
+
+all: anomaly.exe
+
+
+anomaly.exe: GHCNMain.o GHCN.o GnuPlotter.o SimpleSocket.o \
+	     SimpleSocketHostInfo.o SimpleSocketLog.o SimpleSocketException.o
+	     @echo Creating executable $@
+	g++ $(LDLAGS) -o $@ GHCNMain.o GHCN.o GnuPlotter.o SimpleSocket.o SimpleSocketHostInfo.o \
+	     SimpleSocketLog.o SimpleSocketException.o -lreadline -lX11
+
+GHCNMain.o: GHCNMain.cpp GHCN.hpp AnomalyVersion.hpp
+	g++ $(CFLAGS) -c -D_BUILD_DATE_TIME_=$(BUILD_DATE_TIME) \
+			 -D_BUILD_GIT_BRANCH_=$(BUILD_GIT_BRANCH) \
+			 -D_BUILD_GIT_HASH_=$(BUILD_GIT_HASH) \
+			 -D_BUILD_GIT_REV_NUM_=$(BUILD_GIT_REV_NUM) \
+		         -D_BUILD_GIT_FULL_REV_STRING_=$(BUILD_GIT_FULL_REV_STRING) \
+			 GHCNMain.cpp  
+
+GHCN.o: GHCN.cpp GHCN.hpp
+	g++  $(CFLAGS) -c GHCN.cpp 
+
+GnuPlotter.o: GnuPlotter.cpp GnuPlotter.hpp
+	g++ $(CFLAGS) -c GnuPlotter.cpp
+
+SimpleSocket.o: SimpleSocket.cpp SimpleSocket.h 
+	@echo For OS-X platforms, be sure to comment out
+	@echo the '#define LINUX' line in SimpleSocketPlatformDef.h
+	g++ $(CFLAGS) -c SimpleSocket.cpp
+
+SimpleSocketHostInfo.o: SimpleSocketHostInfo.cpp SimpleSocketHostInfo.h 
+	g++ $(CFLAGS) -c SimpleSocketHostInfo.cpp
+
+SimpleSocketLog.o: SimpleSocketLog.cpp SimpleSocketLog.h 
+	g++ $(CFLAGS) -c SimpleSocketLog.cpp
+
+SimpleSocketException.o: SimpleSocketException.cpp SimpleSocketException.h 
+	g++ $(CFLAGS) -c SimpleSocketException.cpp
+
+clean:
+	@echo Cleaning up...
+	rm -f anomaly.exe *.o
